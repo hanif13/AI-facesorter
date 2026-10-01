@@ -2,6 +2,8 @@
 
 โครงงานจัดรูปตามบุคคลสำหรับส่งวันที่ 7 ตุลาคม 2026 งานปัจจุบันคือ Phase 0–1 และจะหยุดรายงานที่ Gate 1 ก่อนเริ่ม Phase 2
 
+Phase 0 และ Phase 1 ทดสอบแล้วบนรูปงานจริง 100 รูป อ่านผลและข้อจำกัดใน [report/gate1.md](report/gate1.md) ยังไม่เริ่ม training
+
 **SCRFD detector เป็น pretrained component ที่อนุญาตไว้** ส่วน `w600k_r50.onnx` เป็น pretrained baseline สำหรับเปรียบเทียบเท่านั้น ยังไม่มี embedding model ที่เทรนเองในโครงการนี้
 
 ## สภาพแวดล้อม
@@ -34,6 +36,12 @@ python -m unittest discover -s tests -v
 ```
 
 รองรับ `--algo dbscan|agglomerative|hdbscan`, `--no-rescue`, quality filters ใน detector และ `--dry-run` ใน organizer ค่า default เป็นจุดเริ่มต้น ยังไม่ได้ tune หรือวัด accuracy
+
+สำหรับทดสอบรวดเร็ว (ใช้ชื่อ run ใหม่ทุกครั้ง):
+
+```sh
+python -m scripts.smoke_baseline --input /path/to/photos --limit 100 --run-name smoke100
+```
 
 รูปหลายคนถูกคัดลอกเข้าทุกโฟลเดอร์ที่เกี่ยวข้อง โดยไม่ซ้ำในโฟลเดอร์เดียวกัน รูปที่ตรวจไม่พบใบหน้าไป No_Face รูปที่ใบหน้าถูกตัดออกทั้งหมดเพราะ quality filter ไป Unknown รูปอ่านไม่ได้บันทึกใน images.csv และข้าม
 
