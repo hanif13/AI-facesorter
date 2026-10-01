@@ -1,0 +1,12 @@
+.venv/
+tools/
+data/
+outputs/
+__pycache__/
+*.pyc
+*.npy
+*.pt
+*.onnx
+.DS_Store
+.env
+*.ses
