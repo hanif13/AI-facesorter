@@ -1,6 +1,6 @@
 # face-sorter
 
-โครงงานจัดรูปตามบุคคลสำหรับส่งวันที่ 7 ตุลาคม 2026 งานปัจจุบันคือ Phase 0–1 และจะหยุดรายงานที่ Gate 1 ก่อนเริ่ม Phase 2
+โครงงานจัดรูปตามบุคคลสำหรับส่งวันที่ 7 ตุลาคม 2026
 
 Phase 0 และ Phase 1 ทดสอบแล้วบนรูปงานจริง 100 รูป อ่านผลและข้อจำกัดใน [report/gate1.md](report/gate1.md) ยังไม่เริ่ม training
 
@@ -52,8 +52,27 @@ python -m scripts.smoke_baseline --input /path/to/photos --limit 100 --run-name 
 ไม่อัปโหลดรูปงานหรือ embedding ออกนอกเครื่อง data/, outputs/, โมเดล และ virtual environment ถูกกันออกจาก git ให้ผู้จัดงานยืนยันการใช้รูปและการให้ความยินยอมก่อนนำไปใช้จริง
 
 CASIA-WebFace aligned 112×112: [InsightFace dataset zoo](https://github.com/deepinsight/insightface/tree/master/recognition/_datasets_) / [Google Drive](https://drive.google.com/file/d/1KxNCrXzln0lal3N4JiYl9cFOIhT78y1l/view)
-หากดาวน์โหลดต้อง login ให้ดาวน์โหลดเองลง data/casia_raw และแจ้ง path ยังไม่ทำ Phase 2 data prep หรือ training ก่อน Gate 1
+หากดาวน์โหลดต้อง login ให้ดาวน์โหลดเองลง data/casia_raw และแจ้ง path ขั้นตอนถัดไปเริ่มได้เมื่อผ่าน Gate 1 แล้ว
 Mirror ทางเลือก: [Kaggle WebFace 112x112](https://www.kaggle.com/datasets/yakhyokhuja/webface-112x112)
+
+## Phase 2: เตรียมข้อมูลฝึก
+
+รองรับ ZIP ที่แยกโฟลเดอร์ตาม identity หรือโฟลเดอร์รูปแบบเดียวกัน อ่าน ZIP โดยตรง ไม่ต้องแตกไฟล์ และตรวจ CRC ระหว่างอ่าน ไม่ต้องใช้ MXNet
+
+```sh
+python -m src.data.prepare_casia --source /path/to/archive.zip --output data/casia_npy
+python -m scripts.benchmark_data --data data/casia_npy --workers 6 --batch-size 128
+```
+
+ผลลัพธ์: images_112.npy (uint8 RGB memmap), labels.npy (int32), train_indices.npy, val_indices.npy, identities.json, image_index.tsv, prep_config.json และ dataset_stats.json
+
+หากหยุดระหว่างเตรียมข้อมูล รันคำสั่งเดิมเพิ่ม `--resume` ตัวอ่านบันทึกตำแหน่งทุก 10,000 รูป หากมีไฟล์เสร็จแล้วจะไม่เขียนทับ ใช้ `--image-size 96`, `--max-identities 5000` และ `--max-per-identity 50` ได้เมื่อจำเป็น ทั้งหมดบันทึกไว้ใน config
+
+DataLoader เปิด memmap แยกในแต่ละ worker ใช้ tensor augmentation: flip, brightness/contrast, crop/resize, erasing และ optional Gaussian blur ตรวจภาพตัวอย่างได้ที่ outputs/report_assets/aug_samples.png
+
+ตัวอย่าง validation 200 รูปมาจาก training identities สำหรับตรวจ sanity เท่านั้น ไม่ใช่การวัด generalization ต้องใช้ LFW แยกต่างหาก ไม่มีการอ้างว่า CASIA และ LFW ไม่มี identity overlap โดยยังไม่ได้ตรวจ
+
+LFW evaluation mirror: [AgeDB/CALFW/CPLFW/LFW aligned 112×112](https://www.kaggle.com/datasets/yakhyokhuja/agedb-30-calfw-cplfw-lfw-aligned-112x112) เก็บไว้ใน data/eval/ แยกจากข้อมูลฝึก
 
 ## ข้อจำกัดปัจจุบัน
 
