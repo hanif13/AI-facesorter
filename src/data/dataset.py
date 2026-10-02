@@ -13,6 +13,8 @@ class MemmapFaceDataset(Dataset):
         self.indices=np.load(self.root/f"{split}_indices.npy",allow_pickle=False) if split!="all" else None
         self.length=len(self.indices) if self.indices is not None else len(np.load(self.root/"labels.npy",mmap_mode="r"))
         self._images=None; self._labels=None
+        import json
+        self.stored_size=json.loads((self.root/"prep_config.json").read_text())["image_size"]
 
     def __len__(self): return self.length
 
@@ -21,10 +23,12 @@ class MemmapFaceDataset(Dataset):
 
     def __getitem__(self,index):
         if self._images is None:
-            self._images=np.load(self.root/f"images_{self.image_size}.npy",mmap_mode="r",allow_pickle=False)
+            self._images=np.load(self.root/f"images_{self.stored_size}.npy",mmap_mode="r",allow_pickle=False)
             self._labels=np.load(self.root/"labels.npy",mmap_mode="r",allow_pickle=False)
         i=int(self.indices[index]) if self.indices is not None else index
         x=torch.from_numpy(self._images[i].copy()).permute(2,0,1).float()
+        if self.image_size!=self.stored_size:
+            x=F.interpolate(x.unsqueeze(0),size=(self.image_size,self.image_size),mode="bilinear",align_corners=False).squeeze(0)
         if self.augment:
             if random.random()<0.5: x=x.flip(2)
             brightness=random.uniform(0.85,1.15); contrast=random.uniform(0.85,1.15)
@@ -42,7 +46,9 @@ class MemmapFaceDataset(Dataset):
             if self.gaussian_blur and random.random()<0.1:
                 from torchvision.transforms.functional import gaussian_blur
                 x=gaussian_blur(x,[3,3])
-        return x.sub_(127.5).div_(128), int(self._labels[i])
+        label=int(self._labels[i])
+        if hasattr(self,"label_map"): label=self.label_map[label]
+        return x.sub_(127.5).div_(128), label
 
 def seed_worker(worker_id):
     seed=torch.initial_seed()%2**32

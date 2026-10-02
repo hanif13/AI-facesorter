@@ -2,7 +2,9 @@
 
 โครงงานจัดรูปตามบุคคลสำหรับส่งวันที่ 7 ตุลาคม 2026
 
-Phase 0 และ Phase 1 ทดสอบแล้วบนรูปงานจริง 100 รูป อ่านผลและข้อจำกัดใน [report/gate1.md](report/gate1.md) ยังไม่เริ่ม training
+Phase 0 และ Phase 1 ทดสอบแล้วบนรูปงานจริง 100 รูป อ่านผลและข้อจำกัดใน [report/gate1.md](report/gate1.md)
+
+Phase 2 เตรียม CASIA และตรวจ DataLoader ครบ epoch แล้ว [ผล Phase 2](report/phase2.md) / Phase 3 ผ่าน benchmark และ sanity checks [รายงาน Gate 2](report/gate2.md) **ยังไม่เริ่มเทรนยาว ต้องได้รับอนุมัติ Gate 2 ก่อน** checkpoint ชื่อ gate2_* เป็น diagnostic เท่านั้น
 
 **SCRFD detector เป็น pretrained component ที่อนุญาตไว้** ส่วน `w600k_r50.onnx` เป็น pretrained baseline สำหรับเปรียบเทียบเท่านั้น ยังไม่มี embedding model ที่เทรนเองในโครงการนี้
 
@@ -73,6 +75,44 @@ DataLoader เปิด memmap แยกในแต่ละ worker ใช้ t
 ตัวอย่าง validation 200 รูปมาจาก training identities สำหรับตรวจ sanity เท่านั้น ไม่ใช่การวัด generalization ต้องใช้ LFW แยกต่างหาก ไม่มีการอ้างว่า CASIA และ LFW ไม่มี identity overlap โดยยังไม่ได้ตรวจ
 
 LFW evaluation mirror: [AgeDB/CALFW/CPLFW/LFW aligned 112×112](https://www.kaggle.com/datasets/yakhyokhuja/agedb-30-calfw-cplfw-lfw-aligned-112x112) เก็บไว้ใน data/eval/ แยกจากข้อมูลฝึก
+
+## Phase 3: ฝึก embedding จาก random initialization
+
+MobileFaceNet 512 มิติ / ArcFace ไม่มี pretrained weights บันทึก initial state hash และ provenance ใน checkpoint ตัวฝึกใช้ MPS fp32 และมีเพดานหน่วยความจำสำหรับ Mac RAM 16 GB
+
+คำสั่งเตรียม LFW จาก ZIP ที่มี BMP และ lfw_ann.txt:
+
+```sh
+python -m src.data.prepare_lfw --source data/eval/evaluation_download.zip
+```
+
+คำสั่งต่อไปนี้เป็นตัวอย่าง **หลังอนุมัติ Gate 2**:
+
+```sh
+export PYTORCH_ENABLE_MPS_FALLBACK=1
+caffeinate -i .venv/bin/python -m src.train_embedding --config configs/train.yaml --time_budget_hours 30 --run-name casia_own_main
+```
+
+configuration เสนอใช้ 5,000 identities สูงสุด 50 รูปต่อคน จาก memmap เต็ม จำนวน epochs จะคำนวณจาก benchmark 200 iterations และ budget ไม่โหลด pretrained embedding โปรแกรมกัน overhead 10% และหยุดตาม wall-clock budget หรือเมื่อดิสก์ว่างต่ำกว่า 2 GiB
+
+เก็บ initial.pt, checkpoint ทุก epoch, last.pt, best.pt ตาม LFW และ crash.pt แบบ atomic ภายใน outputs/checkpoints/<run-name>/ พร้อม config.yaml, iterations.csv, history.json และ log แบบ timestamp ใน outputs/logs/
+
+```sh
+python -m src.train_embedding --resume outputs/checkpoints/casia_own_main/last.pt
+# หากจำเป็นต้องลด learning rate หลังวิเคราะห์ log:
+python -m src.train_embedding --resume outputs/checkpoints/casia_own_main/last.pt --lr 0.025
+```
+
+SIGINT/Ctrl+C หยุดหลัง optimizer update จบ แล้วบันทึก crash.pt/last.pt Resume กู้ model/head/optimizer/scheduler และ progress ได้ แต่ augmentation RNG ภายใน workers ไม่ได้รับรอง bit-for-bit ระยะเวลาที่ใช้ก่อนหยุดถูกรวมใน budget เดิม ไม่เริ่ม budget 30 ชั่วโมงใหม่ทุกครั้งที่ resume
+
+LFW ประเมินทุก 2 epochs ด้วย flip-TTA, L2 normalization และ 10-fold CV เลือก threshold เฉพาะอีก 9 folds ผล diagnostic มีป้ายแยกจาก trained model อย่าใช้ checkpoint gate2_* เป็นโมเดลส่งงาน
+
+```sh
+python -m src.eval_lfw --bin data/eval/lfw.bin --embedder own --checkpoint outputs/checkpoints/casia_own_main/best.pt --output outputs/report_assets/lfw_own
+python -m src.eval_lfw --bin data/eval/lfw.bin --embedder baseline --output outputs/report_assets/lfw_baseline
+```
+
+LFW ถูกใช้เลือก best checkpoint ตามแผน จึงควรระบุ model-selection bias ในรายงาน ผลบนรูปงานจริงต้องใช้ ground truth และ tune/test split แยกกันในเฟสต่อไป
 
 ## ข้อจำกัดปัจจุบัน
 
