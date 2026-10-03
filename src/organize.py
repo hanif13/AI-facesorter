@@ -11,7 +11,8 @@ from src.common.image_io import image_paths, load_rgb
 from src.common.logging_utils import setup_logging
 
 def organize(faces: pd.DataFrame, assignments: pd.DataFrame, source: Path, output: Path,
-             images: pd.DataFrame | None = None, link: str = "copy", dry_run: bool = False):
+             images: pd.DataFrame | None = None, link: str = "copy", dry_run: bool = False,
+             folder_names: dict[int, str] | None = None):
     source, output = source.resolve(), output.resolve()
     if output == source or source in output.parents:
         raise ValueError("Output must be outside the source photo directory")
@@ -23,6 +24,13 @@ def organize(faces: pd.DataFrame, assignments: pd.DataFrame, source: Path, outpu
     counts = merged[merged.cluster_id >= 0].groupby("cluster_id").size()
     ordered = sorted(counts.index, key=lambda i: (-counts[i], i))
     folder_map = {i: f"Person_{n:02d}" for n, i in enumerate(ordered, 1)}
+    if folder_names:
+        folder_map.update({i: folder_names[i] for i in ordered if i in folder_names})
+    names = list(folder_map.values())
+    if any(not n or n in {".", ".."} or any(c in n for c in '/\\:\x00') or n.casefold() in {"unknown", "no_face", "manifest.csv", "summary.json"} for n in names):
+        raise ValueError("Invalid person folder name")
+    if len({n.casefold() for n in names}) != len(names):
+        raise ValueError("Person folder names must be unique")
     folder_map[-1] = "Unknown"
     destinations: dict[Path, set[str]] = {}
     for row in merged.itertuples():

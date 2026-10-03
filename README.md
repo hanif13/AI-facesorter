@@ -1,12 +1,60 @@
-# face-sorter
+# Face Sorter — จัดรูปงานตามบุคคล
 
-โครงงานจัดรูปตามบุคคลสำหรับส่งวันที่ 7 ตุลาคม 2026
+ปรับข้อกำหนดวันที่ 3 ตุลาคม 2026 ตามที่ผู้ใช้ยืนยันกับอาจารย์: เน้นผลิตภัณฑ์ที่ใช้งานได้ อนุญาตใช้ไลบรารีและโมเดลสำเร็จรูป ไม่ต้องฝึก embedding จากศูนย์ ระบบหลักจึงใช้ SCRFD + ArcFace R50 ผ่าน InsightFace การฝึก 30 ชั่วโมงไม่อยู่ในงานที่จำเป็นอีกต่อไป
 
-Phase 0 และ Phase 1 ทดสอบแล้วบนรูปงานจริง 100 รูป อ่านผลและข้อจำกัดใน [report/gate1.md](report/gate1.md)
+## เปิดโปรแกรม
 
-Phase 2 เตรียม CASIA และตรวจ DataLoader ครบ epoch แล้ว [ผล Phase 2](report/phase2.md) / Phase 3 ผ่าน benchmark และ sanity checks [รายงาน Gate 2](report/gate2.md) **ยังไม่เริ่มเทรนยาว ต้องได้รับอนุมัติ Gate 2 ก่อน** checkpoint ชื่อ gate2_* เป็น diagnostic เท่านั้น
+ดับเบิลคลิก `เปิดโปรแกรม.command` หรือรันจากโฟลเดอร์ face-sorter:
 
-**SCRFD detector เป็น pretrained component ที่อนุญาตไว้** ส่วน `w600k_r50.onnx` เป็น pretrained baseline สำหรับเปรียบเทียบเท่านั้น ยังไม่มี embedding model ที่เทรนเองในโครงการนี้
+```sh
+.venv/bin/python -m streamlit run app.py --server.address 127.0.0.1
+```
+
+เปิด http://127.0.0.1:8501 บนเครื่องนี้ เลือกชุดรูป `day3_ready` สำหรับรูป day 3 ทั้งหมด หรือ `ตัวอย่าง 100 รูป` สำหรับชุดทดลองเดิม
+
+1. เลือกโฟลเดอร์รูปและตั้งชื่อชุดรูปใหม่
+2. รอค้นหาและจัดกลุ่มใบหน้า ระบบแสดงความคืบหน้า
+3. ดูใบหน้าหรือรูปงานในแต่ละกลุ่ม ตั้งชื่อ รวมกลุ่ม หรือเลือกใบหน้าเพื่อย้ายไปกลุ่มอื่น/สร้างกลุ่มใหม่/ยังไม่ทราบบุคคล การแก้ไขบันทึกทันทีและย้อนครั้งล่าสุดได้
+4. ส่งออกทุกคนหรือเลือกเฉพาะบางคน ระบุตำแหน่งปลายทางที่ว่าง ระบบประเมินพื้นที่ก่อนคัดลอกและไม่แก้ต้นฉบับ
+
+โปรแกรมยังเปิดได้โดยไม่ต้องใช้ข้อมูลฝึก CASIA หรือ checkpoint ทดลอง ใช้เฉพาะโมเดล ONNX ใน outputs/models และรูปต้นฉบับ ข้อมูลใบหน้า กลุ่ม และการแก้ไขเก็บที่ outputs/projects/<ชื่อชุดรูป>/
+
+## ใช้คำสั่งเดียว
+
+สร้างชุดรูปเพื่อเปิดตรวจในหน้าจอ (ยังไม่คัดลอกรูป):
+
+```sh
+.venv/bin/python run_pipeline.py --input /path/to/photos --run-name my_event
+```
+
+จัดกลุ่มและคัดลอกออกทันที:
+
+```sh
+.venv/bin/python run_pipeline.py --input /path/to/photos --run-name my_event --output /path/to/sorted
+```
+
+รองรับ `--algo hdbscan|dbscan|agglomerative`, `--threshold`, `--rescue-sim`, `--no-rescue`, `--limit` ต้องใช้ชื่อชุดรูปใหม่เมื่อเปลี่ยนต้นฉบับหรือค่า การตั้งค่าและภาพเดิมเทียบด้วย path/size/mtime และ hash ของโมเดล ไม่ได้ hash เนื้อหารูปทั้งหมด เมื่อทำต่อจะใช้ขั้นตอนที่เสร็จแล้ว หากหยุดกลางขั้นตอนจะเริ่มขั้นตอนนั้นใหม่
+
+ผลส่งออกเป็นโฟลเดอร์ชื่อบุคคล, Unknown, No_Face, manifest.csv, summary.json และ export_info.json รูปหลายคนคัดลอกเข้าทุกโฟลเดอร์ที่เกี่ยวข้อง ชื่อบุคคลที่แสดงก่อนผู้ใช้ตั้งเป็นรหัสกลุ่มอัตโนมัติ ไม่ใช่การระบุตัวตนจริง
+
+รุ่นปัจจุบันเริ่มด้วย DBSCAN cosine distance 0.4 และปิด noise rescue ค่านี้ยังไม่ได้วัดความแม่นยำกับข้อมูลติดป้ายกำกับ กติกาช่วยแยกใบหน้าหลายคนจากรูปเดียวกันไม่เหมาะกับภาพ collage หรือกระจก ผู้ใช้แก้กลุ่มเองได้
+
+## รายงานและการตรวจสอบ
+
+- รายงานหลักตามข้อกำหนดใหม่: [report/report.md](report/report.md)
+- แผนปัจจุบัน: [report/product_plan.md](report/product_plan.md)
+- โครงสไลด์: [report/slides_outline.md](report/slides_outline.md)
+- ผลทดสอบการคัดลอก การแก้กลุ่ม และข้อจำกัด: outputs/logs/product_unit_tests.log
+
+```sh
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+โมเดลสำเร็จรูปของ InsightFace มีเงื่อนไข non-commercial research ตาม [เอกสารเจ้าของโมเดล](https://github.com/deepinsight/insightface/blob/master/python-package/README.md#license) รุ่นนี้มุ่งใช้เป็นโครงงานมหาวิทยาลัย ต้องตรวจสิทธิ์โมเดลก่อนนำไปใช้เชิงพาณิชย์ โค้ด MIT และสิทธิ์น้ำหนักโมเดลเป็นคนละส่วน
+
+## ประวัติการทดลองก่อนเปลี่ยนข้อกำหนด
+
+ส่วนด้านล่างเก็บวิธีติดตั้งและการทดลอง Phase 0–3 ไว้อ้างอิง คำสั่งฝึกโมเดลเป็นทางเลือกเชิงวิจัย ไม่จำเป็นสำหรับโปรแกรมรุ่นปัจจุบัน รายงาน gate1/gate2 เป็นบันทึกข้อกำหนดเดิม ไม่ใช่เงื่อนไขอนุมัติของผลิตภัณฑ์รุ่นใหม่
 
 ## สภาพแวดล้อม
 
@@ -25,7 +73,7 @@ python -m scripts.check_environment
 
 `requirements.in` คือรายการ dependency ที่ต้องการ ส่วน `requirements.txt` จะบันทึกเวอร์ชันที่ติดตั้งและตรวจสอบแล้ว
 
-## Baseline pipeline
+## Pipeline ทดลองเดิม
 
 รันจากโฟลเดอร์โครงการ โดยใช้โฟลเดอร์ผลลัพธ์ที่ว่าง การรันตรวจจับครั้งแรกดาวน์โหลด buffalo_l เก็บภายใน outputs/models
 
@@ -86,7 +134,7 @@ MobileFaceNet 512 มิติ / ArcFace ไม่มี pretrained weights บ�
 python -m src.data.prepare_lfw --source data/eval/evaluation_download.zip
 ```
 
-คำสั่งต่อไปนี้เป็นตัวอย่าง **หลังอนุมัติ Gate 2**:
+คำสั่งต่อไปนี้เป็นตัวอย่างสำหรับการฝึกเชิงวิจัยตามแผนเดิม (ไม่ได้เริ่มรัน และไม่จำเป็นตามข้อกำหนดใหม่):
 
 ```sh
 export PYTORCH_ENABLE_MPS_FALLBACK=1
@@ -105,7 +153,7 @@ python -m src.train_embedding --resume outputs/checkpoints/casia_own_main/last.p
 
 SIGINT/Ctrl+C หยุดหลัง optimizer update จบ แล้วบันทึก crash.pt/last.pt Resume กู้ model/head/optimizer/scheduler และ progress ได้ แต่ augmentation RNG ภายใน workers ไม่ได้รับรอง bit-for-bit ระยะเวลาที่ใช้ก่อนหยุดถูกรวมใน budget เดิม ไม่เริ่ม budget 30 ชั่วโมงใหม่ทุกครั้งที่ resume
 
-LFW ประเมินทุก 2 epochs ด้วย flip-TTA, L2 normalization และ 10-fold CV เลือก threshold เฉพาะอีก 9 folds ผล diagnostic มีป้ายแยกจาก trained model อย่าใช้ checkpoint gate2_* เป็นโมเดลส่งงาน
+LFW ประเมินทุก 2 epochs ด้วย flip-TTA, L2 normalization และ 10-fold CV เลือก threshold เฉพาะอีก 9 folds ผล diagnostic มีป้ายแยกจาก trained model checkpoint gate2_* เป็นผลทดลองเดิม ผลิตภัณฑ์ปัจจุบันใช้ pretrained ONNX
 
 ```sh
 python -m src.eval_lfw --bin data/eval/lfw.bin --embedder own --checkpoint outputs/checkpoints/casia_own_main/best.pt --output outputs/report_assets/lfw_own

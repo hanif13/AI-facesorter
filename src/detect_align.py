@@ -17,7 +17,7 @@ from src.common.logging_utils import setup_logging
 COLUMNS = ["face_id", "image_path", "crop_path", "bbox_x1", "bbox_y1", "bbox_x2", "bbox_y2",
            "det_score", "blur", "face_w", "face_h", "kps"]
 
-def detect(input_dir: Path, output: Path, model_root: Path, det_score=0.5, min_face=40., min_blur=0., limit=None):
+def detect(input_dir: Path, output: Path, model_root: Path, det_score=0.5, min_face=40., min_blur=0., limit=None, progress=None):
     output.mkdir(parents=True, exist_ok=True)
     crops = output / "crops"
     crops.mkdir(exist_ok=True)
@@ -27,7 +27,7 @@ def detect(input_dir: Path, output: Path, model_root: Path, det_score=0.5, min_f
     rows, images = [], []
     paths = image_paths(input_dir)
     if limit is not None: paths = paths[:limit]
-    for path in tqdm(paths, desc="Detect faces"):
+    for number, path in enumerate(tqdm(paths, desc="Detect faces"), 1):
         record = {"image_path": str(path.resolve()), "status": "ok", "detected": 0, "accepted": 0}
         try:
             original = load_bgr(path)
@@ -56,6 +56,8 @@ def detect(input_dir: Path, output: Path, model_root: Path, det_score=0.5, min_f
             record.update(status="unreadable", error=str(error))
             logging.warning("Skipping %s: %s", path, error)
         images.append(record)
+        if progress and (number % 10 == 0 or number == len(paths)):
+            progress(number, len(paths))
     pd.DataFrame(rows, columns=COLUMNS).to_parquet(output / "faces.parquet", index=False)
     pd.DataFrame(images).to_csv(output / "images.csv", index=False)
     (output / "detection_config.json").write_text(json.dumps({"input": str(input_dir.resolve()),
