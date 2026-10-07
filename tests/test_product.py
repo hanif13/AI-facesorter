@@ -1,5 +1,6 @@
 import json
 import tempfile
+import zipfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -8,6 +9,7 @@ import pandas as pd
 from PIL import Image
 from src.product import write_json, catalog, edit_project, export_project, split_photo_conflicts
 import numpy as np
+from src.downloads import prepare_zip
 
 class ProductTests(unittest.TestCase):
     def setUp(self):
@@ -49,6 +51,32 @@ class ProductTests(unittest.TestCase):
         self.assertEqual(summary['copies'],1)
         self.assertFalse((self.root/'selected/Person_ID_002').exists())
         self.assertEqual(self.photo.read_bytes(),original)
+
+    def test_zip_contains_person_folders_and_original_bytes_without_export_copy(self):
+        edit_project(self.project,'rename',cluster=0,name='บีม')
+        path,summary=prepare_zip(self.project)
+        self.assertEqual(summary['copies'],2)
+        with zipfile.ZipFile(path) as archive:
+            self.assertEqual(archive.read('project/บีม/two.jpg'),self.photo.read_bytes())
+            self.assertEqual(archive.read('project/Person_ID_002/two.jpg'),self.photo.read_bytes())
+            self.assertIsNone(archive.testzip())
+            self.assertEqual(len(archive.namelist()),5)
+        cached,_=prepare_zip(self.project)
+        self.assertEqual(path,cached)
+        self.assertFalse((self.root/'export').exists())
+
+    def test_zip_selected_person_revision_and_insufficient_space(self):
+        path,_=prepare_zip(self.project,selected=[0])
+        with zipfile.ZipFile(path) as archive:
+            self.assertFalse(any('Person_ID_002' in name for name in archive.namelist()))
+        edit_project(self.project,'rename',cluster=0,name='ใหม่')
+        renamed,_=prepare_zip(self.project,selected=[0])
+        self.assertNotEqual(path,renamed)
+        with zipfile.ZipFile(renamed) as archive:
+            self.assertIn('project/ใหม่/two.jpg',archive.namelist())
+        with patch('src.product.shutil.disk_usage',return_value=SimpleNamespace(free=0)):
+            with self.assertRaises(ValueError): prepare_zip(self.project,selected=[1])
+        with self.assertRaises(ValueError): prepare_zip(self.project,selected=[])
 
     def test_automatic_same_photo_conflict_is_split_without_touching_good_groups(self):
         vectors=np.array([[1.,0],[1.,0],[1.,.01],[1.,.01],[0.,1],[0.,1]])
